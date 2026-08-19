@@ -1,0 +1,59 @@
+# Commented out IPython magic to ensure Python compatibility.
+import numpy as np
+import netCDF4
+import xarray as xr
+
+import cartopy.crs as ccrs
+import cartopy
+
+import matplotlib as mpl
+import matplotlib.cm as cm
+from matplotlib import pyplot as plt
+
+import argopy
+from argopy.plot import scatter_map, scatter_plot  # Functions to easily make maps and plots
+
+argopy.reset_options()
+argopy.clear_cache()
+
+with argopy.set_options(parallel=True):
+    f = argopy.DataFetcher(ds="bgc", params=["DOXY"])
+    f = f.region([-180, 180, -90, 90]+[0, 10,'2023-05-01','2023-07-01'])
+    f.load()
+
+
+
+f
+
+apDS = f.data
+
+apDS
+
+apDS.DOXY
+
+data=apDS.argo.point2profile()
+data
+
+scatter_map(data,legend = False);
+doxy = apDS.where(apDS['PRES']<10)['DOXY']
+
+
+lon=doxy.LONGITUDE
+lat=doxy.LATITUDE
+
+fig,ax = plt.subplots(figsize=(18,10),subplot_kw={'projection': ccrs.PlateCarree()})
+ax.set_global()
+
+
+# data for each basin
+cs=ax.scatter(lon,lat,c=doxy,cmap="RdBu_r",vmin=140, vmax=360, edgecolor='none')
+ax.coastlines()
+ax.add_feature(cartopy.feature.LAND.with_scale('110m'))
+ax.gridlines(draw_labels=True, x_inline=False, y_inline=False);
+
+#colorbar
+cbar=fig.colorbar(cs,ax=ax,extend='both',orientation='horizontal',shrink=.8,aspect=40)
+cbar.set_label(doxy.long_name)
+
+fig.savefig("05-07-2023.png")
+plt.show()
