@@ -1,0 +1,193 @@
+import numpy as np
+import netCDF4
+import xarray as xr
+
+import cartopy.crs as ccrs
+import cartopy
+import cartopy.feature as cfeature #to z chata
+from scipy.interpolate import griddata # i to
+
+#to dodajemy żeby pozbyć się kontynentów
+from cartopy.io import shapereader
+from shapely.ops import unary_union
+from shapely import vectorized
+
+
+import matplotlib as mpl
+import matplotlib.cm as cm
+from matplotlib import pyplot as plt
+
+import argopy
+from argopy.plot import scatter_map, scatter_plot
+argopy.reset_options()
+argopy.clear_cache()
+
+with argopy.set_options(parallel=True):
+    f = argopy.DataFetcher(ds="bgc", params=["DOXY"])
+    f = f.region([-180, 180, -90, 90]+[0, 10,'2025-05-01','2025-07-01'])
+    f.load()
+
+
+
+f
+
+apDS = f.data
+
+apDS
+
+apDS.DOXY
+
+data=apDS.argo.point2profile()
+data
+
+#Wybór danych z warstwy 0–10 m
+doxy = apDS.where(apDS["PRES"] < 10)["DOXY"]
+
+lon = doxy["LONGITUDE"].values
+lat = doxy["LATITUDE"].values
+oxygen = doxy.values
+
+# Usunięcie brakujących wartości
+mask = (
+    np.isfinite(lon) &
+    np.isfinite(lat) &
+    np.isfinite(oxygen)
+)
+
+lon = lon[mask]
+lat = lat[mask]
+oxygen = oxygen[mask]
+
+#tworzenie siatki
+# rozdzielczość siatki
+n_lon = 400
+n_lat = 200
+
+grid_lon = np.linspace(-180, 180, n_lon)
+grid_lat = np.linspace(-90, 90, n_lat)
+
+grid_lon, grid_lat = np.meshgrid(grid_lon, grid_lat)
+
+#interpolacja danych argo na siatkę
+grid_oxygen = griddata(
+    (lon, lat),
+    oxygen,
+    (grid_lon, grid_lat),
+    method="linear"
+)
+
+levels = np.arange(140, 361, 20)
+
+#maskowanie lądu? i pobranie danych o lądach
+land_shp = shapereader.natural_earth(
+    resolution="110m",
+    category="physical",
+    name="land"
+)
+
+reader = shapereader.Reader(land_shp)
+#połączenie kontynentów
+land = unary_union(list(reader.geometries()))
+#maska lądu
+land_mask = vectorized.contains(
+    land,
+    grid_lon,
+    grid_lat
+)
+
+#zamaskowanie interpolowanych wartości nad lądem
+grid_oxygen_masked = np.ma.masked_where(
+    land_mask,
+    grid_oxygen
+)
+
+#tworzenie mapy
+fig, ax = plt.subplots(
+    figsize=(18, 10),
+    subplot_kw={"projection": ccrs.PlateCarree()}
+)
+
+ax.set_global()
+
+# mapa kolorów – delikatne wypełnienie obszarów
+cf = ax.contourf(
+    grid_lon,
+    grid_lat,
+    grid_oxygen_masked,
+    levels=levels,
+    cmap="RdBu_r",
+    extend="both",
+    transform=ccrs.PlateCarree()
+)
+
+#izolinie
+cs = ax.contour(
+    grid_lon,
+    grid_lat,
+    grid_oxygen_masked,
+    levels=levels,
+    colors="black",
+    linewidths=0.8,
+    transform=ccrs.PlateCarree()
+)
+
+#dodanie kontynetów
+ax.add_feature(
+    cfeature.LAND.with_scale("110m"),
+    facecolor="lightgray",
+    edgecolor="black"
+)
+
+ax.coastlines()
+
+# podpisy wartości izolinii
+ax.clabel(
+    cs,
+    inline=True,
+    fontsize=9,
+    fmt="%d"
+)
+#Elementy mapy
+ax.coastlines()
+ax.add_feature(
+    cfeature.LAND.with_scale("110m"),
+    facecolor="lightgray",
+    edgecolor="black"
+)
+
+gl = ax.gridlines(
+    draw_labels=True,
+    x_inline=False,
+    y_inline=False
+)
+
+gl.top_labels = False
+gl.right_labels = False
+
+#kolorki
+cbar = fig.colorbar(
+    cf,
+    ax=ax,
+    orientation="horizontal",
+    shrink=0.8,
+    aspect=40,
+    pad=0.05
+)
+
+cbar.set_label(
+    "Stężenie tlenu [µmol/kg]"
+)
+#zapisanie
+ax.set_title(
+    "Stężenie tlenu rozpuszczonego (DOXY) na głębokości 0–10 m\n"
+    "Dane Argo, maj–czerwiec 2023",
+    fontsize=15
+)
+
+plt.savefig(
+    "05-07-2023_izolinie.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+fig.savefig("mapa z izoliniamii.png")
+plt.show()
