@@ -1,3 +1,4 @@
+
 import numpy as np
 import netCDF4
 import xarray as xr
@@ -11,7 +12,7 @@ from scipy.interpolate import griddata # i to
 from cartopy.io import shapereader
 from shapely.ops import unary_union
 from shapely import vectorized
-
+from shapely.geometry import Polygon
 
 import matplotlib as mpl
 import matplotlib.cm as cm
@@ -78,6 +79,8 @@ grid_oxygen = griddata(
 
 levels = np.arange(140, 361, 20)
 
+
+
 #maskowanie lądu? i pobranie danych o lądach
 land_shp = shapereader.natural_earth(
     resolution="110m",
@@ -95,9 +98,60 @@ land_mask = vectorized.contains(
     grid_lat
 )
 
+#maskowanie akwenów
+caspian_sea = Polygon([
+    (46, 47),
+    (51, 47),
+    (54, 44),
+    (54, 38),
+    (51, 36),
+    (47, 37),
+    (46, 40),
+    (46, 47)
+])
+
+black_sea = Polygon([
+    (27, 42),
+    (33, 41),
+    (39, 42),
+    (42, 45),
+    (42, 47),
+    (39, 47),
+    (35, 46),
+    (31, 46),
+    (27, 44)
+])
+
+red_sea = Polygon([
+    (32, 29),
+    (35, 28),
+    (39, 24),
+    (43, 20),
+    (43, 15),
+    (40, 12),
+    (38, 15),
+    (37, 20),
+    (35, 24),
+    (32, 27)
+])
+
+excluded_seas = unary_union([
+    caspian_sea,
+    black_sea,
+    red_sea
+])
+sea_mask = vectorized.contains(
+    excluded_seas,
+    grid_lon,
+    grid_lat
+)
+
+total_mask = land_mask | sea_mask
+
+
 #zamaskowanie interpolowanych wartości nad lądem
 grid_oxygen_masked = np.ma.masked_where(
-    land_mask,
+    total_mask,
     grid_oxygen
 )
 
@@ -115,7 +169,7 @@ cf = ax.contourf(
     grid_lat,
     grid_oxygen_masked,
     levels=levels,
-    cmap="RdBu_r",
+    cmap="spring_r", #tutaj kolory do izolinii
     extend="both",
     transform=ccrs.PlateCarree()
 )
@@ -189,5 +243,5 @@ plt.savefig(
     dpi=300,
     bbox_inches="tight"
 )
-fig.savefig("mapa z izoliniamii.png")
+fig.savefig("mapa z izoliniamii-spring.png")
 plt.show()
