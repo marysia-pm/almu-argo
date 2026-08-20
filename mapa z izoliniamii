@@ -1,4 +1,3 @@
-
 import numpy as np
 import netCDF4
 import xarray as xr
@@ -17,6 +16,7 @@ from shapely.geometry import Polygon
 import matplotlib as mpl
 import matplotlib.cm as cm
 from matplotlib import pyplot as plt
+
 
 import argopy
 from argopy.plot import scatter_map, scatter_plot
@@ -83,14 +83,55 @@ levels = np.arange(140, 361, 20)
 
 #maskowanie lądu? i pobranie danych o lądach
 land_shp = shapereader.natural_earth(
-    resolution="110m",
+    resolution="110m", #tutaj zmieniłam z 110m
     category="physical",
     name="land"
 )
 
-reader = shapereader.Reader(land_shp)
+land_reader = shapereader.Reader(land_shp)
 #połączenie kontynentów
-land = unary_union(list(reader.geometries()))
+land = unary_union(list(land_reader.geometries()))
+
+#maskowanie akwenów
+marine_shp = shapereader.natural_earth(
+    resolution="10m",
+    category="physical",
+    name="geography_marine_polys"
+)
+
+marine_reader = shapereader.Reader(marine_shp)
+
+marine_records = list(marine_reader.records())
+
+print("Dostępne akweny:")
+
+for record in marine_records:
+    print(record.attributes.get("name"))
+
+
+wanted_seas = [
+    "Black Sea",
+    "Caspian Sea",
+    "Red Sea"
+]
+
+selected_geometries = []
+
+for record in marine_records:
+
+    name = record.attributes.get("name")
+
+    if name in wanted_seas:
+        selected_geometries.append(record.geometry)
+
+        print("Dodano do maski:", name)
+
+
+excluded_seas = unary_union(
+    selected_geometries
+)
+
+
 #maska lądu
 land_mask = vectorized.contains(
     land,
@@ -98,53 +139,16 @@ land_mask = vectorized.contains(
     grid_lat
 )
 
-#maskowanie akwenów
-caspian_sea = Polygon([
-    (46, 47),
-    (51, 47),
-    (54, 44),
-    (54, 38),
-    (51, 36),
-    (47, 37),
-    (46, 40),
-    (46, 47)
-])
-
-black_sea = Polygon([
-    (27, 42),
-    (33, 41),
-    (39, 42),
-    (42, 45),
-    (42, 47),
-    (39, 47),
-    (35, 46),
-    (31, 46),
-    (27, 44)
-])
-
-red_sea = Polygon([
-    (32, 29),
-    (35, 28),
-    (39, 24),
-    (43, 20),
-    (43, 15),
-    (40, 12),
-    (38, 15),
-    (37, 20),
-    (35, 24),
-    (32, 27)
-])
-
-excluded_seas = unary_union([
-    caspian_sea,
-    black_sea,
-    red_sea
-])
+#maska mórz
 sea_mask = vectorized.contains(
     excluded_seas,
     grid_lon,
     grid_lat
 )
+
+
+
+
 
 total_mask = land_mask | sea_mask
 
@@ -243,5 +247,6 @@ plt.savefig(
     dpi=300,
     bbox_inches="tight"
 )
-fig.savefig("mapa z izoliniamii-spring.png")
+fig.savefig("mapa z izoliniamii-spring.final.png")
 plt.show()
+
